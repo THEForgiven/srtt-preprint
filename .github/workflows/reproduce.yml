@@ -32,16 +32,16 @@ jobs:
           ls -l src/repro_batch.py
           ls -l data-min/interesting_stream.npy data-min/custom_D.npy
 
-      - name: Run headless repro (capture log)
+      - name: Record env versions
         run: |
           set -euxo pipefail
           mkdir -p outputs
           python -V | tee outputs/env_versions.txt
-          python - <<'PY' | tee -a outputs/env_versions.txt
-import numpy as np, scipy as sp
-print("NumPy", np.__version__)
-print("SciPy", sp.__version__)
-PY
+          python -c "import numpy as n, scipy as s; print('NumPy', n.__version__); print('SciPy', s.__version__)" | tee -a outputs/env_versions.txt
+
+      - name: Run headless repro (capture log)
+        run: |
+          set -euxo pipefail
           python src/repro_batch.py \
             --x data-min/interesting_stream.npy \
             --dict custom --D data-min/custom_D.npy \
