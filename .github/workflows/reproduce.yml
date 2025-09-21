@@ -1,0 +1,45 @@
+name: reproduce
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  run-repro:
+    runs-on: ubuntu-latest
+    env:
+      MPLBACKEND: Agg
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - name: Upgrade pip tooling
+        run: python -m pip install --upgrade pip setuptools wheel
+      - name: Install minimal deps (CI)
+        run: |
+          printf "numpy\nscipy\nmatplotlib\npandas\n" > env/requirements-ci.txt
+          pip install --prefer-binary -r env/requirements-ci.txt
+          pip install --only-binary=:all: numpy scipy || true
+      - name: Sanity: files present
+        run: |
+          ls -l src/repro_batch.py data-min/interesting_stream.npy data-min/custom_D.npy
+      - name: Run headless repro
+        run: |
+          mkdir -p outputs
+          python src/repro_batch.py \
+            --x data-min/interesting_stream.npy \
+            --dict custom --D data-min/custom_D.npy \
+            --m 1400 --lam 0.02 --nu phase --seed 12345 \
+            --out outputs
+      - name: List outputs (debug)
+        if: always()
+        run: ls -la outputs || true
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: srtt-repro-artifacts
+          path: outputs/**
