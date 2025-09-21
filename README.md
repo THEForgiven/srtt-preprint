@@ -39,3 +39,12 @@ See [`CITATION.cff`](CITATION.cff). A DOI will be minted upon first GitHub Relea
 
 **Author:** Kyle E. Litz, PhD  
 **Version:** v0.1-preprint (2025-09-20)
+
+---
+
+## Build status
+[![reproduce](https://github.com/THEForgiven/srtt-preprint/actions/workflows/ci.yml/badge.svg)](https://github.com/THEForgiven/srtt-preprint/actions/workflows/ci.yml)
+[![github-pages](https://github.com/THEForgiven/srtt-preprint/actions/workflows/pages.yml/badge.svg)](https://github.com/THEForgiven/srtt-preprint/actions/workflows/pages.yml)
+
+**Site:** https://THEForgiven.github.io/srtt-preprint/  
+**Repo:** https://github.com/THEForgiven/srtt-preprint
