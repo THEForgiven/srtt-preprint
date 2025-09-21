@@ -27,7 +27,7 @@ jobs:
           pip install --prefer-binary -r env/requirements-ci.txt
           pip install --only-binary=:all: numpy scipy || true
 
-      - name: Sanity: required files present
+      - name: "Sanity: required files present"
         run: |
           ls -l src/repro_batch.py
           ls -l data-min/interesting_stream.npy data-min/custom_D.npy
