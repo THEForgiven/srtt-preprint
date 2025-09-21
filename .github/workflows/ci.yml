@@ -17,12 +17,11 @@ jobs:
           for i in 1 2 3; do
             pip install -r env/requirements.txt && break || sleep 10
           done
-          # Encourage wheels-only for heavy libs (no-op if already satisfied)
           pip install --only-binary=:all: numpy scipy || true
       - name: Run headless repro
         run: |
           mkdir -p outputs
-          python src/repro_batch.py             --x data-min/interesting_stream.npy             --dict custom --D data-min/custom_D.npy             --m 1400 --lam 0.02 --nu phase --seed 12345             --out outputs
+          python src/repro_batch.py --x data-min/interesting_stream.npy --dict custom --D data-min/custom_D.npy --m 1400 --lam 0.02 --nu phase --seed 12345 --out outputs
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
