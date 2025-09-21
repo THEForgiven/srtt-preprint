@@ -1,56 +1,42 @@
 name: reproduce
 on:
-  workflow_dispatch:
   push:
-    branches: [ main ]
-
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
 jobs:
   run-repro:
-    runs-on: ubuntu-22.04
-    timeout-minutes: 30
+    runs-on: ubuntu-latest
     env:
       MPLBACKEND: Agg
       PYTHONUNBUFFERED: "1"
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-python@v5
         with:
           python-version: '3.10'
-
-      - name: Install deps (prefer wheels)
+      - name: Install minimal deps (CI)
         run: |
-          set -euxo pipefail
-          python -m pip install --upgrade pip
-          mkdir -p env
           printf "numpy\nscipy\nmatplotlib\npandas\n" > env/requirements-ci.txt
+          python -m pip install --upgrade pip setuptools wheel
           pip install --prefer-binary -r env/requirements-ci.txt
-          pip install --only-binary=:all: numpy scipy || true
-
-      - name: "Sanity: required files present"
+      - name: Sanity: files present
         run: |
-          ls -l src/repro_batch.py
-          ls -l data-min/interesting_stream.npy data-min/custom_D.npy
-
-      - name: Record env versions
+          ls -l src/repro_batch.py data-min/interesting_stream.npy data-min/custom_D.npy
+      - name: Run headless repro
         run: |
-          set -euxo pipefail
           mkdir -p outputs
-          python -V | tee outputs/env_versions.txt
-          python -c "import numpy as n, scipy as s; print('NumPy', n.__version__); print('SciPy', s.__version__)" | tee -a outputs/env_versions.txt
-
-      - name: Run headless repro (capture log)
-        run: |
-          set -euxo pipefail
           python src/repro_batch.py \
             --x data-min/interesting_stream.npy \
             --dict custom --D data-min/custom_D.npy \
             --m 1400 --lam 0.02 --nu phase --seed 12345 \
-            --out outputs |& tee outputs/repro_log.txt
-          pip freeze > outputs/pip_freeze.txt
-
-      - name: Upload artifacts (always)
+            --out outputs
+      - name: List outputs (debug)
         if: always()
+        run: ls -la outputs || true
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: srtt-repro-artifacts
