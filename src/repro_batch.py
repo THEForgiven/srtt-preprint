@@ -1,226 +1,142 @@
 #!/usr/bin/env python3
-"""
-SRTT headless runner: sparse recovery + 3-plot HTML report (Observed/Recovered/Residual) + metrics.
-
-Inputs:
-  --x <path.npy>             observed 1D vector
-  --dict {custom,fourier}    dictionary type
-  --D <path.npy>             required if --dict custom (shape N x K with N==len(x))
-  --m <int>                  book-keeping (e.g., target samples); not required by solver
-  --lam <float>              L1 strength (lambda)
-  --nu <str>                 placeholder for 'ν' mode (kept for CLI compatibility)
-  --seed <int>               RNG seed for reproducibility
-  --out <dir>                output directory
-
-Outputs (in --out):
-  recovered.npy, residual.npy, coefficients.csv, metrics.json,
-  srtt_report.html  (3 plots only), observed.png / recovered.png / residual.png
-"""
-import argparse, os, io, json, base64
+import argparse, os, json, io, base64
 import numpy as np
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-# ---------- Utils ----------
-def soft(x, t):
-    return np.sign(x) * np.maximum(np.abs(x) - t, 0.0)
+def soft(x, t): return np.sign(x)*np.maximum(np.abs(x)-t, 0.0)
 
-def power_spectral_norm_squared(D, niter=10, seed=0):
-    rng = np.random.RandomState(seed)
-    v = rng.randn(D.shape[1])
-    for _ in range(niter):
-        v = D.T @ (D @ v)
-        n = np.linalg.norm(v) + 1e-12
-        v /= n
-    L = float(np.linalg.norm(D @ v) + 1e-12) ** 2
-    return L
-
-def ista(D, x, lam, iters=300, seed=0):
-    L = power_spectral_norm_squared(D, seed=seed)
-    step = 1.0 / (L + 1e-12)
+def ista(D, x, lam, iters=250):
+    # D:(N,K), x:(N,)
+    # Lipschitz ≈ ||D||_2^2 via power iteration
+    rs = np.random.RandomState(0)
+    v = rs.randn(D.shape[1])
+    for _ in range(12):
+        v = D.T @ (D @ v); v /= (np.linalg.norm(v)+1e-12)
+    L = float(np.linalg.norm(D @ v) + 1e-12)**2
+    step = 1.0/(L+1e-9)
     z = np.zeros(D.shape[1])
     for _ in range(iters):
-        grad = D.T @ (D @ z - x)
-        z = soft(z - step * grad, lam * step)
+        z = soft(z - step * (D.T @ (D@z - x)), lam*step)
     return z
 
-def spectral_entropy(x):
-    x = np.asarray(x)
-    N = x.size
-    # real-sided spectrum
-    X = np.fft.rfft(x - x.mean())
-    P = (np.abs(X) ** 2).astype(np.float64)
-    s = P.sum() + 1e-12
-    p = P / s
-    H = -(p * (np.log(p + 1e-12))).sum()  # nats
-    Hmax = np.log(p.size + 1e-12)
-    return float(H / (Hmax + 1e-12))
+def gowers_u2(a):
+    a = np.asarray(a, float)
+    n = len(a); if n < 2: return 0.0
+    s = 0.0
+    for h in range(1, min(64, n-1)):  # light probe
+        v = a[:n-h]*a[h:]
+        s += np.mean(v)**2
+    return float(np.sqrt(s/(min(64, n-1)+1e-12)))
 
-def u2_proxy(x):
-    """A light 'structure' proxy akin to low-order Gowers signal:
-       squared normalized adjacent autocorrelation (unitless in [0,1)-ish)."""
-    x = np.asarray(x, float)
-    if x.size < 2:
-        return 0.0
-    num = np.mean(x[:-1] * x[1:])
-    den = np.mean(x * x) + 1e-12
-    val = (num / den) ** 2
-    return float(max(0.0, val))
+def gowers_u3(a):
+    # cheap proxy: U3 >= U2^1.5 on many structured cases; keep it light
+    return float(gowers_u2(a)**1.5)
 
-def snr_like(rec, res):
-    num = float(np.dot(rec, rec))
-    den = float(np.dot(res, res)) + 1e-12
-    return num / den
+def spectral_entropy(a):
+    a = np.asarray(a, float)
+    A = np.fft.rfft(a - a.mean())
+    p = np.abs(A)**2
+    p = p/(p.sum()+1e-12)
+    H = -(p * np.log(p + 1e-12)).sum()
+    return float(H)
 
-def plot_b64(y, title):
-    fig = plt.figure(figsize=(10,3))
-    ax = fig.add_subplot(111)
-    ax.plot(y)
-    ax.set_title(title)
-    ax.set_xlabel("sample")
-    ax.set_ylabel("value")
-    fig.tight_layout()
+def fig_to_png_b64(fig):
     buf = io.BytesIO()
-    fig.savefig(buf, format="png", dpi=120, bbox_inches="tight")
+    fig.savefig(buf, format="png", bbox_inches="tight")
     plt.close(fig)
     return base64.b64encode(buf.getvalue()).decode("ascii")
 
-def write_png(path, y, title):
-    fig = plt.figure(figsize=(10,3))
-    plt.plot(y)
-    plt.title(title); plt.xlabel("sample"); plt.ylabel("value")
-    plt.tight_layout()
-    fig.savefig(path, dpi=120, bbox_inches="tight")
-    plt.close(fig)
+def save_png(path, y, title):
+    fig = plt.figure(figsize=(9,2.2), dpi=120)
+    plt.plot(y, linewidth=1); plt.title(title); plt.xlabel("t"); plt.ylabel("amp")
+    plt.tight_layout(); fig.savefig(path, bbox_inches="tight"); plt.close(fig)
 
-def write_three_plot_report(outdir, obs, rec, res, metrics):
-    # Save standalone PNGs
-    write_png(os.path.join(outdir, "observed.png"),  obs, "Observed")
-    write_png(os.path.join(outdir, "recovered.png"), rec, "Recovered")
-    write_png(os.path.join(outdir, "residual.png"),  res, "Residual")
-
-    # Embed
-    b64_obs = plot_b64(obs, "Observed")
-    b64_rec = plot_b64(rec, "Recovered")
-    b64_res = plot_b64(res, "Residual")
-
-    metrics_block = json.dumps(metrics, indent=2)
-    html = f"""<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8"/>
-<title>SRTT Report — Observed / Recovered / Residual</title>
-<meta name="viewport" content="width=device-width, initial-scale=1"/>
-<style>
- body{{font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Helvetica,Arial,sans-serif;line-height:1.45;margin:24px;color:#111827}}
- h1,h2{{margin:.2em 0}}
- .card{{background:#fff;border:1px solid #e5e7eb;border-radius:12px;box-shadow:0 1px 2px rgba(0,0,0,.04);padding:16px;margin:16px 0}}
- img{{max-width:100%;height:auto;border-radius:8px;border:1px solid #e5e7eb}}
- .small{{font-size:.9em;color:#374151}}
- pre{{padding:12px;background:#f6f8fa;border:1px solid #e5e7eb;border-radius:8px;overflow-x:auto}}
-</style>
-</head>
-<body>
-  <h1>SRTT Report</h1>
-  <p class="small">This report shows the Observed signal and the recovered structure with its residual, plus summary metrics.</p>
-
-  <div class="card">
-    <h2>Observed</h2>
-    <img alt="Observed" src="data:image/png;base64,{b64_obs}"/>
-  </div>
-
-  <div class="card">
-    <h2>Recovered</h2>
-    <img alt="Recovered" src="data:image/png;base64,{b64_rec}"/>
-  </div>
-
-  <div class="card">
-    <h2>Residual</h2>
-    <img alt="Residual" src="data:image/png;base64,{b64_res}"/>
-  </div>
-
-  <div class="card">
-    <h2>Key Metrics</h2>
-    <pre>{metrics_block}</pre>
-  </div>
-</body>
-</html>
-"""
-    with open(os.path.join(outdir, "srtt_report.html"), "w", encoding="utf-8") as f:
-        f.write(html)
-
-# ---------- Main ----------
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--x", required=True, help="path to .npy observed vector")
-    ap.add_argument("--dict", dest="dict_type", choices=["custom","fourier"], default="custom")
-    ap.add_argument("--D", help="path to dictionary .npy if custom")
-    ap.add_argument("--m", type=int, default=None)
+    ap.add_argument("--dict", choices=["custom","fourier"], default="custom")
+    ap.add_argument("--D", help="path to dictionary .npy (if custom)")
+    ap.add_argument("--m", type=int, default=None)      # optional window for consistency
     ap.add_argument("--lam", type=float, default=0.02)
-    ap.add_argument("--nu", type=str, default="phase")
-    ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--nu", default="phase")            # not used here; kept for API compat
+    ap.add_argument("--seed", type=int, default=12345)
     ap.add_argument("--out", required=True, help="output dir")
     args = ap.parse_args()
 
     os.makedirs(args.out, exist_ok=True)
 
-    # Load observed
     x = np.load(args.x).astype(float).ravel()
-    N = x.size
+    N = len(x)
 
-    # Build/load dictionary
-    if args.dict_type == "custom":
-        if not args.D:
-            raise SystemExit("ERROR: --dict custom requires --D <path.npy>")
+    if args.dict == "custom":
+        if not args.D: raise SystemExit("custom dict selected but --D not provided")
         D = np.load(args.D).astype(float)
-        if D.shape[0] != N:
-            raise SystemExit(f"ERROR: D.shape[0]={D.shape[0]} must equal len(x)={N}")
+        if D.shape[0] != N: raise SystemExit(f"D has {D.shape[0]} rows, expected {N}")
     else:
-        # real Fourier dictionary (cos/sin pairs), K chosen moderately
-        K = 256
-        t = np.arange(N) / N
+        # real Fourier atoms (cos/sin pairs), K≈min(256, N-1)*2
+        K = min(256, max(2, N//8))
+        t = np.arange(N)/N
         atoms = []
-        for k in range(1, K//2 + 1):
+        for k in range(1, K//2+1):
             atoms.append(np.cos(2*np.pi*k*t))
             atoms.append(np.sin(2*np.pi*k*t))
         D = np.vstack(atoms).T
-        D = D / (np.linalg.norm(D, axis=0, keepdims=True) + 1e-12)
+        D = D/(np.linalg.norm(D, axis=0, keepdims=True)+1e-12)
 
-    # Solve (ISTA)
-    z = ista(D, x, args.lam, iters=300, seed=args.seed)
-    rec = D @ z
-    res = x - rec
+    # Recover via L1 (ISTA)
+    z = ista(D, x, args.lam)
+    xhat = D @ z
+    r = x - xhat
 
-    # Save core artifacts
-    np.save(os.path.join(args.out, "recovered.npy"), rec)
-    np.save(os.path.join(args.out, "residual.npy"),  res)
-    # coefficients
-    np.savetxt(os.path.join(args.out, "coefficients.csv"), z.reshape(1,-1), delimiter=",", fmt="%.6g")
-
-    # Metrics
+    # Metrics (observed / recovered / residual)
     metrics = {
-        "dict": f"{args.dict_type}",
-        "m": args.m,
-        "lambda": args.lam,
-        "l2": 0,
-        "U2": {
-            "obs": u2_proxy(x),
-            "rec": u2_proxy(rec),
-            "res": u2_proxy(res),
-        },
-        "spectral_entropy": {
-            "obs": spectral_entropy(x),
-            "rec": spectral_entropy(rec),
-            "res": spectral_entropy(res),
-        },
-        "snr_like": snr_like(rec, res),
+        "U2": {"obs": gowers_u2(x), "rec": gowers_u2(xhat), "res": gowers_u2(r)},
+        "spectral_entropy": {"obs": spectral_entropy(x), "rec": spectral_entropy(xhat), "res": spectral_entropy(r)},
+        "snr_like": float(np.var(xhat)/(np.var(r)+1e-12)),
+        "dict": f"{args.dict}" + (f"({os.path.basename(args.D)})" if args.dict=="custom" else ""),
+        "m": args.m if args.m else N, "lambda": args.lam, "l2": 0
     }
-    with open(os.path.join(args.out, "metrics.json"), "w", encoding="utf-8") as f:
+    with open(os.path.join(args.out, "metrics.json"), "w") as f:
         json.dump(metrics, f, indent=2)
 
-    # Write the 3-plot report (this is now the ONLY HTML produced)
-    write_three_plot_report(args.out, x, rec, res, metrics)
+    # Save arrays + coefficients
+    np.save(os.path.join(args.out, "recovered.npy"), xhat)
+    np.save(os.path.join(args.out, "residual.npy"), r)
+    np.savetxt(os.path.join(args.out, "coefficients.csv"), z[None,:], delimiter=",")
+
+    # Three PNGs
+    save_png(os.path.join(args.out,"observed.png"),  x,    "Observed")
+    save_png(os.path.join(args.out,"recovered.png"), xhat, "Recovered")
+    save_png(os.path.join(args.out,"residual.png"),  r,    "Residual")
+
+    # Inline-only 3-plot HTML
+    with open(os.path.join(args.out, "observed.png"), "rb") as f:
+        obs_b64 = base64.b64encode(f.read()).decode("ascii")
+    with open(os.path.join(args.out, "recovered.png"), "rb") as f:
+        rec_b64 = base64.b64encode(f.read()).decode("ascii")
+    with open(os.path.join(args.out, "residual.png"), "rb") as f:
+        res_b64 = base64.b64encode(f.read()).decode("ascii")
+
+    html = f"""<!doctype html>
+<html><head><meta charset="utf-8"><title>SRTT Report</title>
+<style>body{{font-family:system-ui,Arial,sans-serif;margin:20px}}
+h1{{margin:0 0 10px}} .row{{display:flex;gap:12px;flex-wrap:wrap}}
+.card{{flex:1 1 320px;border:1px solid #ddd;border-radius:10px;padding:10px}}
+.card img{{width:100%;height:auto;border-radius:6px}}</style></head>
+<body>
+<h1>SRTT Report (3-plot)</h1>
+<div class="row">
+  <div class="card"><h3>Observed</h3><img src="data:image/png;base64,{obs_b64}"></div>
+  <div class="card"><h3>Recovered</h3><img src="data:image/png;base64,{rec_b64}"></div>
+  <div class="card"><h3>Residual</h3><img src="data:image/png;base64,{res_b64}"></div>
+</div>
+<h3>Key Metrics</h3>
+<pre>{json.dumps(metrics, indent=2)}</pre>
+</body></html>"""
+    with open(os.path.join(args.out, "srtt_report.html"), "w", encoding="utf-8") as f:
+        f.write(html)
 
 if __name__ == "__main__":
     main()
