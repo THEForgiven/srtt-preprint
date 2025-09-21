@@ -8,3 +8,12 @@ __pycache__/
 srtt-env/
 outputs/
 .devcontainer/
+# Local CI/analysis runs
+artifacts_*/
+outputs_*/
+job.log
+last.log
+artifacts_*/
+outputs_*/
+job.log
+last.log
