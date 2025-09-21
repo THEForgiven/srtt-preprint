@@ -21,16 +21,11 @@ jobs:
         run: python -m pip install --upgrade pip setuptools wheel
       - name: Install minimal deps (CI)
         run: |
-          printf "numpy
-scipy
-matplotlib
-pandas
-" > env/requirements-ci.txt
+          printf "numpy\nscipy\nmatplotlib\npandas\n" > env/requirements-ci.txt
           pip install --prefer-binary -r env/requirements-ci.txt
           pip install --only-binary=:all: numpy scipy || true
       - name: Sanity: files present
         run: |
-          test -f src/repro_batch.py && test -f data-min/interesting_stream.npy && test -f data-min/custom_D.npy
           ls -l src/repro_batch.py data-min/interesting_stream.npy data-min/custom_D.npy
       - name: Run headless repro
         run: |
