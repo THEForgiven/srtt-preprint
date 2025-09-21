@@ -60,3 +60,4 @@ jobs:
         with:
           name: srtt-repro-artifacts
           path: outputs/**
+          if-no-files-found: warn
