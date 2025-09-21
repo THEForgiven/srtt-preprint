@@ -1,6 +1,7 @@
 name: reproduce
 on:
   push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
 permissions:
@@ -29,8 +30,8 @@ pandas
           pip install --only-binary=:all: numpy scipy || true
       - name: Sanity: files present
         run: |
-          ls -l src/repro_batch.py
-          ls -l data-min/interesting_stream.npy data-min/custom_D.npy
+          test -f src/repro_batch.py && test -f data-min/interesting_stream.npy && test -f data-min/custom_D.npy
+          ls -l src/repro_batch.py data-min/interesting_stream.npy data-min/custom_D.npy
       - name: Run headless repro
         run: |
           mkdir -p outputs
@@ -39,7 +40,6 @@ pandas
         if: always()
         run: ls -la outputs || true
       - name: Upload artifacts
-        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: srtt-repro-artifacts
