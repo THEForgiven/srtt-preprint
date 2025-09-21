@@ -1,6 +1,8 @@
 # A Structure–Randomness Transfer Theorem for Sparse Data — Preprint & Repro
 [![Reproduce CI](https://github.com/THEForgiven/srtt-preprint/actions/workflows/reproduce.yml/badge.svg)](https://github.com/THEForgiven/srtt-preprint/actions/workflows/reproduce.yml)
 [![Docs](https://img.shields.io/badge/docs-GitHub%20Pages-blue)](https://THEForgiven.github.io/srtt-preprint/)
+![Python 3.10](https://img.shields.io/badge/python-3.10-3776AB?logo=python&logoColor=white)
+[![License](https://img.shields.io/github/license/THEForgiven/srtt-preprint)](./LICENSE)
 
 This repository hosts the **preprint** and a **minimal, reproducible code+data** bundle that validates the core functions of the theorem.
 The structure-randomness transfer theorem unifies concepts from higher-order Fourier analysis, relative Szemerédi-type transference, and compressed sensing. The core idea of the theorem is that a single "pseudorandom majorant" can be used for two purposes: to count structured patterns within sparse data and to stably recover structured signals from a small number of random measurements.
