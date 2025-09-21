@@ -23,7 +23,9 @@ def ista(D, x, lam, iters=250):
 
 def gowers_u2(a):
     a = np.asarray(a, float)
-    n = len(a); if n < 2: return 0.0
+    n = len(a)
+    if n < 2:
+        return 0.0
     s = 0.0
     for h in range(1, min(64, n-1)):  # light probe
         v = a[:n-h]*a[h:]
