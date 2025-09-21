@@ -1,0 +1,14 @@
+name: smoke
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "hello from Actions" | tee ping.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: smoke-artifacts
+          path: ping.txt
