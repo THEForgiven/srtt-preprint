@@ -1,4 +1,4 @@
-name: reproduce
+name: reproduce-manual
 on:
   push:
     branches: [main]

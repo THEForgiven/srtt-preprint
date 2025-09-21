@@ -1,4 +1,4 @@
-name: reproduce
+name: reproduce-ci
 on:
   push:
     branches: [main]
