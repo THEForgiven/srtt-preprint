@@ -1,5 +1,10 @@
 name: reproduce
-on: [push, pull_request]
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
 jobs:
   run-repro:
     runs-on: ubuntu-latest
@@ -13,20 +18,19 @@ jobs:
           python-version: '3.10'
       - name: Upgrade pip tooling
         run: python -m pip install --upgrade pip setuptools wheel
-      - name: Install minimal deps for headless repro
+      - name: Install minimal deps (CI)
         run: |
-          REQ=env/requirements-ci.txt
-          for i in 1 2 3; do
-            pip install --prefer-binary -r "$REQ" && break || sleep 10
-          done
-          # Encourage wheels for heavy libs (no-op if already satisfied)
+          printf "numpy
+scipy
+matplotlib
+pandas
+" > env/requirements-ci.txt
+          pip install --prefer-binary -r env/requirements-ci.txt
           pip install --only-binary=:all: numpy scipy || true
-      - name: Sanity import
+      - name: Sanity: files present
         run: |
-          python - <<'PYS'
-import numpy, scipy, matplotlib, pandas
-print("imports-ok", numpy.__version__, scipy.__version__)
-PYS
+          ls -l src/repro_batch.py
+          ls -l data-min/interesting_stream.npy data-min/custom_D.npy
       - name: Run headless repro
         run: |
           mkdir -p outputs
