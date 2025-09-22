@@ -2,7 +2,7 @@
 [![Docs](https://img.shields.io/badge/docs-GitHub%20Pages-blue)](https://THEForgiven.github.io/srtt-preprint/)
 ![Python 3.10](https://img.shields.io/badge/python-3.10-3776AB?logo=python&logoColor=white)
 [![License](https://img.shields.io/github/license/THEForgiven/srtt-preprint)](./LICENSE)
-[![Reproduce CI](https://github.com/THEForgiven/srtt-preprint/actions/workflows/reproduce.yml/badge.svg?branch=main)](https://github.com/THEForgiven/srtt-preprint/actions/workflows/reproduce.yml)
+
 
 
 This repository hosts the **preprint** and a **minimal, reproducible code+data** bundle that validates the core functions of the theorem.
