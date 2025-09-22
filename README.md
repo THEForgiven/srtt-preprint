@@ -30,6 +30,8 @@ Expected outcomes (tolerances in `repro/params.json`):
 - Residual spectral entropy ≫ recovered spectral entropy
 - SNR-like improves when using `custom_D.npy` vs Fourier
 
+- in your outputs file created by this repro you will find srtt_report.html It will have 3 graphs, the observed data, the structured signal captured, and the residuals in addition to metrics.
+
 ## Contents
 - `paper/preprint.pdf` — The unreviewed preprint (frozen artifact).
 - `docs/` — GitHub Pages landing with MathJax + **Download PDF** button.
